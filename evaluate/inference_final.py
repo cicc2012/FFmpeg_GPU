@@ -38,6 +38,20 @@ final_output_path=str(Path(r"F:\dataset\Night2.0.0\test\all\predict\overall"))
 final_eval_path=str(Path(r"F:\dataset\Night2.0.0\test\all\evaluation"))
 log_path=str(Path(r"F:\dataset\Night2.0.0\test\all\evaluation\eval_log.csv"))
 
+# Assign a unique color to each class
+colors = [
+    (255, 0, 0),    # Red
+    (255, 255, 0),  # Yellow
+    (0, 255, 0),    # Green
+    (255, 0, 255),  # Magenta
+]
+
+class_names = ['red', 'yellow', 'green', 'null']
+group_names = ['front', 'side']
+group_filters = [0]
+
+conf_threshold = 0.25  # Confidence threshold for YOLO predictions
+iou_threshold = 0.5  # IoU threshold for NMS
 
 # step 1 function
 # Normalize Boxes for WBF, inside each img (boxes from each img)
@@ -55,87 +69,300 @@ def denormalize_boxes(boxes, width, height):
         [x1 * width, y1 * height, x2 * width, y2 * height] for x1, y1, x2, y2 in boxes
     ])
 
-def run_stage1_inference(model_path, source_dir, output_dir):
-    model = YOLO(model_path)
-    # os.makedirs(output_dir, exist_ok=True)
-    labels_dir = os.path.join(output_dir, "labels")
-    os.makedirs(labels_dir, exist_ok=True)
+def write_images_previews_in_image(im_path, boxes_px, classes, scores, image_dir, preview_dir, obj_names):
+    im = cv2.imread(im_path)
+    img_name = Path(im_path).stem
+    crops = []  # crops per img, as the return
+    preview_path = os.path.join(preview_dir, f"{img_name}.png")
+
+    for i, box in enumerate(boxes_px):
+        x1, y1, x2, y2 = map(int, box)
+        cls = int(classes[i])
+        conf = float(scores[i])
+        
+        # crop the object image
+        crop = im[y1:y2, x1:x2]
+        crop_name = f"{img_name}_{i}.png"
+        image_path = os.path.join(image_dir, crop_name)
+        cv2.imwrite(image_path, crop)
+        crops.append((image_path, cls, img_name, x1, y1, conf))
+
+        # Draw the object preview
+        color = colors[int(cls) if int(cls) < len(colors) else 0]
+        label = f"{obj_names[int(cls) if int(cls) < len(obj_names) else 0]}: {conf:.4f}"
+        cv2.rectangle(im, (x1, y1), (x2, y2), (0, 255, 0), 2)
+        cv2.putText(im, label, (x1 + 5, y2 + 20), cv2.FONT_HERSHEY_SIMPLEX, 1.0, color, 2)
     
-    results = model.predict(source=source_dir, save=False, conf=0.35, iou=0.5) # default conf=0.25
+    # Save the previews of this image
+    cv2.imwrite(preview_path, im)
+    
+    return crops
+
+
+def write_labels_in_image(boxes_norm, classes, scores, label_path):
+    lines = []  # groups per img
+    # get norm coordinates for stage level evaluation
+    for box, cls, conf in zip(boxes_norm, classes, scores):
+        cls = int(cls)
+        conf = float(conf)
+        cx, cy, w, h = box
+        lines.append(f"{cls} {cx:.6f} {cy:.6f} {w:.6f} {h:.6f} {conf:.4f}\n")
+    
+    with open(label_path, "w") as f:
+        f.writelines(lines)
+
+
+def convert_normalized_xyxy_to_yolo_xywhn(boxes_xyxy):
+    """
+    Convert normalized [x_min, y_min, x_max, y_max] format to YOLO [x_center, y_center, width, height] format.
+
+    Args:
+        boxes_fused (numpy.ndarray): Array of boxes in normalized [x_min, y_min, x_max, y_max] format.
+
+    Returns:
+        numpy.ndarray: Array of boxes in YOLO [x_center, y_center, width, height] format.
+    """
+    yolo_boxes = []
+    for box in boxes_xyxy:
+        x_min, y_min, x_max, y_max = box
+        x_center = (x_min + x_max) / 2
+        y_center = (y_min + y_max) / 2
+        width = x_max - x_min
+        height = y_max - y_min
+        yolo_boxes.append([x_center, y_center, width, height])
+    return np.array(yolo_boxes)
+
+
+# export the cropped objects in an image
+# also plot the overall boxes in the image
+# return the information of crops, as a list of tuples for further stage
+def export_obj_in_image(result, output_parent_dirs, obj_names, is_wbf=False):
+    imgage_dir = output_parent_dirs["imgage_dir"]
+    wbf_image_dir = output_parent_dirs["wbf_image_dir"]
+    preview_dir = output_parent_dirs["preview_dir"]
+    wbf_preview_dir = output_parent_dirs["wbf_preview_dir"]
+    labels_dir = output_parent_dirs["labels_dir"]
+    wbf_labels_dir = output_parent_dirs["wbf_labels_dir"]
+
+    im_path = result.path
+    im = cv2.imread(im_path)
+    img_name = Path(im_path).stem
+    full_h, full_w = im.shape[:2]
+    # preview_path = os.path.join(preview_dir, f"{img_name}.png")
+    # wbf_preview_path = os.path.join(wbf_preview_dir, f"{img_name}.png")
+    label_path = os.path.join(labels_dir, f"{img_name}.txt")
+    wbf_label_path = os.path.join(wbf_labels_dir, f"{img_name}.txt")
+
+    crops = []  # crops per img, as the return
+
+    # ---- get images, labels, and previews before WBF ----
+
+    # get pixel coordinates: for images and previews
+    # for j, boxes_xyxy in enumerate(result.boxes.xyxy.cpu().numpy()):
+    #     cls = int(result.boxes.cls[j])
+    #     conf = float(result.boxes.conf[j])
+    #     x1, y1, x2, y2 = map(int, boxes_xyxy)
+
+    #     # crop the object image
+    #     crop = im[y1:y2, x1:x2]
+    #     crop_name = f"{img_name}_{j}.png"
+    #     image_path = os.path.join(imgage_dir, crop_name)
+    #     cv2.imwrite(image_path, crop)
+    #     if not is_wbf:
+    #         crops.append((image_path, cls, img_name, x1, y1, conf))
+
+    #     # Draw the object preview
+    #     color = colors[int(cls) if int(cls) < len(colors) else 0]
+    #     label = f"{obj_names[int(cls) if int(cls) < len(obj_names) else 0]}: {conf:.4f}"
+    #     cv2.rectangle(im, (x1, y1), (x2, y2), (0, 255, 0), 2)
+    #     cv2.putText(im, label, (x2 + 5, y2 + 5), cv2.FONT_HERSHEY_SIMPLEX, 1.0, color, 2)
+
+    # # Save the previews of this image
+    # cv2.imwrite(preview_path, im)
+
+    crops = write_images_previews_in_image(
+        im_path, result.boxes.xyxy.cpu().numpy(), result.boxes.cls.cpu().numpy(),
+        result.boxes.conf.cpu().numpy(), imgage_dir, preview_dir, obj_names
+    )
+
+    # # Save the labels of this image
+    # lines = []  # groups per img
+    # # get norm coordinates for stage level evaluation
+    # for box, cls, conf in zip(result.boxes.xywhn.cpu().numpy(),
+    #                           result.boxes.cls.cpu().numpy(),
+    #                           result.boxes.conf.cpu().numpy()):
+    #     cls = int(cls)
+    #     conf = float(conf)
+    #     cx, cy, w, h = box
+    #     lines.append(f"{cls} {cx:.6f} {cy:.6f} {w:.6f} {h:.6f} {conf:.4f}\n")
+    
+    # with open(label_path, "w") as f:
+    #     f.writelines(lines)
+
+    write_labels_in_image(
+        result.boxes.xywhn.cpu().numpy(), result.boxes.cls.cpu().numpy(),
+        result.boxes.conf.cpu().numpy(), label_path
+    )
+
+    # ---- get images, labels, and previews after WBF ----
+    if is_wbf:
+        # prepare for WBF
+        boxes_xyxy = result.boxes.xyxy.cpu().numpy()  # shape: [N, 4]
+        scores = result.boxes.conf.cpu().numpy()      # shape: [N]
+        labels = result.boxes.cls.cpu().numpy().astype(int)
+
+        boxes_norm = normalize_boxes(boxes_xyxy, full_w, full_h)
+        boxes_list = [boxes_norm]
+        scores_list = [scores.tolist()]
+        labels_list = [labels.tolist()]
+
+        boxes_fused, scores_fused, labels_fused = weighted_boxes_fusion(
+            boxes_list, scores_list, labels_list,
+            iou_thr=0.1, skip_box_thr=0.001)
+
+        fused_boxes_px = denormalize_boxes(boxes_fused, full_w, full_h)
+
+        crops = write_images_previews_in_image(
+            im_path, fused_boxes_px, labels_fused, scores_fused, 
+            wbf_image_dir, wbf_preview_dir, obj_names
+            )
+        
+        write_labels_in_image(
+            convert_normalized_xyxy_to_yolo_xywhn(boxes_fused),
+            labels_fused, scores_fused, wbf_label_path
+            )
+
+    return crops
+
+
+# export labels of all detected objects in an image
+def export_label_in_image(result, output_dir):
+    im_path = result.path
+    im = cv2.imread(im_path)
+    img_name = Path(im_path).stem
+    label_file = os.path.join(output_dir, f"{img_name}.txt")
+
+    lines = []  # groups per img
+    # get norm coordinates for stage level evaluation
+    for box, cls, conf in zip(result.boxes.xywhn.cpu().numpy(),
+                              result.boxes.cls.cpu().numpy(),
+                              result.boxes.conf.cpu().numpy()):
+        cls = int(cls)
+        conf = float(conf)
+        cx, cy, w, h = box
+        lines.append(f"{cls} {cx:.6f} {cy:.6f} {w:.6f} {h:.6f} {conf:.4f}\n")  
+            
+    with open(label_file, "w") as f:
+        f.writelines(lines)
+
+
+def run_stage1_inference(model_path, source_dir, output_dir):
+    imgage_dir = os.path.join(output_dir, "images")
+    wbf_image_dir = os.path.join(output_dir, "images_wbf")
+    preview_dir = os.path.join(output_dir, "preview")
+    wbf_preview_dir = os.path.join(output_dir, "preview_wbf")
+    labels_dir = os.path.join(output_dir, "labels")
+    wbf_labels_dir = os.path.join(output_dir, "labels_wbf")
+
+    for folder in [imgage_dir, wbf_image_dir, preview_dir, wbf_preview_dir, labels_dir, wbf_labels_dir]:
+        if os.path.exists(folder):
+            shutil.rmtree(folder)
+        os.makedirs(folder, exist_ok=True)
+
+    output_dirs = {"imgage_dir":imgage_dir,
+                    "wbf_image_dir":wbf_image_dir,
+                    "preview_dir":preview_dir,
+                    "wbf_preview_dir":wbf_preview_dir,
+                    "labels_dir":labels_dir,
+                    "wbf_labels_dir":wbf_labels_dir}
+
+    model = YOLO(model_path)
+    os.makedirs(output_dir, exist_ok=True)
+    # labels_dir = os.path.join(output_dir, "labels")
+    # os.makedirs(labels_dir, exist_ok=True)
+    # labels_dir_wbf = os.path.join(output_dir, "labels_wbf")
+    # os.makedirs(labels_dir_wbf, exist_ok=True)
+    
+    # results = model.predict(source=source_dir, save=False, conf=0.35, iou=0.5) # default conf=0.25, iou=0.7
+    results = model.predict(source=source_dir, save=False, conf=conf_threshold)  # default conf=0.25, iou=0.7
     # lower iou for nms
 
     crops = []
     for i, r in enumerate(results):
-        im_path = r.path
-        im = cv2.imread(im_path)
-        img_name = Path(im_path).stem
-        label_file = os.path.join(labels_dir, f"{img_name}.txt")
+        crops.extend(export_obj_in_image(r, output_dirs, group_names, True))
+
+        # im_path = r.path
+        # im = cv2.imread(im_path)
+        # img_name = Path(im_path).stem
+        # label_file = os.path.join(labels_dir, f"{img_name}.txt")
+        # label_file_wbf = os.path.join(labels_dir_wbf, f"{img_name}.txt")
         
         
-        ## get pixel coordinates
-        # for j, box in enumerate(r.boxes.xyxy.cpu().numpy()):
-            # cls = int(r.boxes.cls[j])
-            # conf = float(r.boxes.conf[j])
-            # if cls not in stage1_keep_classes: # [0, 1]:  # Only A or F
-                # continue
-            # x1, y1, x2, y2 = map(int, box)
-            # crop = im[y1:y2, x1:x2]
-            # crop_name = f"{img_name}_{j}.png"
-            # crop_path = os.path.join(output_dir, crop_name)
-            # cv2.imwrite(crop_path, crop)
-            # crops.append((crop_path, cls, img_name, x1, y1, conf))    # crop_name, x1, y1 are used for reprojection
+        # ## get pixel coordinates
+        # # for j, box in enumerate(r.boxes.xyxy.cpu().numpy()):
+        #     # cls = int(r.boxes.cls[j])
+        #     # conf = float(r.boxes.conf[j])
+        #     # if cls not in stage1_keep_classes: # [0, 1]:  # Only A or F
+        #         # continue
+        #     # x1, y1, x2, y2 = map(int, box)
+        #     # crop = im[y1:y2, x1:x2]
+        #     # crop_name = f"{img_name}_{j}.png"
+        #     # crop_path = os.path.join(output_dir, crop_name)
+        #     # cv2.imwrite(crop_path, crop)
+        #     # crops.append((crop_path, cls, img_name, x1, y1, conf))    # crop_name, x1, y1 are used for reprojection
             
         # lines = []  # groups per img
-        ## get local coordinates for stage level evaluation
+        # # get local coordinates for stage level evaluation
         # for box1, cls1, conf1 in zip(r.boxes.xywhn.cpu().numpy(),
-                                  # r.boxes.cls.cpu().numpy(),
-                                  # r.boxes.conf.cpu().numpy()):
-            # cls1 = int(cls1)
-            # cx1, cy1, w1, h1 = box1
-            # lines.append(f"{cls1} {cx1:.6f} {cy1:.6f} {w1:.6f} {h1:.6f} {conf1:.4f}\n")
+        #                           r.boxes.cls.cpu().numpy(),
+        #                           r.boxes.conf.cpu().numpy()):
+        #     cls1 = int(cls1)
+        #     cx1, cy1, w1, h1 = box1
+        #     lines.append(f"{cls1} {cx1:.6f} {cy1:.6f} {w1:.6f} {h1:.6f} {conf1:.4f}\n")
                 
         # with open(label_file, "w") as f:
-            # f.writelines(lines)
+        #     f.writelines(lines)
             
         
-        # perform WBF: one box per object
-        boxes_xyxy = r.boxes.xyxy.cpu().numpy()  # shape: [N, 4]
-        scores = r.boxes.conf.cpu().numpy()      # shape: [N]
-        labels = r.boxes.cls.cpu().numpy().astype(int)
+        # # perform WBF: one box per object
+        # # boxes_xyxy = r.boxes.xyxy.cpu().numpy()  # shape: [N, 4]
+        # norm_boxes = r.boxes.xywhn.cpu().numpy()  # shape: [N, 4] normalized [cx, cy, w, h]
+        # scores = r.boxes.conf.cpu().numpy()      # shape: [N]
+        # labels = r.boxes.cls.cpu().numpy().astype(int)
         
-        H, W = r.orig_shape  # Image size for normalization
+        # H, W = r.orig_shape  # Image size for normalization
         
-        norm_boxes = normalize_boxes(boxes_xyxy, W, H)
-        boxes_list = [norm_boxes]
-        scores_list = [scores.tolist()]
-        labels_list = [labels.tolist()]
+        # # norm_boxes = normalize_boxes(boxes_xyxy, W, H)
+        # boxes_list = [norm_boxes]
+        # scores_list = [scores.tolist()]
+        # labels_list = [labels.tolist()]
         
-        boxes_fused, scores_fused, labels_fused = weighted_boxes_fusion(
-            boxes_list, scores_list, labels_list,
-            iou_thr=0.5, skip_box_thr=0.001)
+        # boxes_fused, scores_fused, labels_fused = weighted_boxes_fusion(
+        #     boxes_list, scores_list, labels_list,
+        #     iou_thr=0.5, skip_box_thr=0.001)
 
-        fused_boxes_px = denormalize_boxes(boxes_fused, W, H)
+        # fused_boxes_px = denormalize_boxes(boxes_fused, W, H)
         
-        lines = []  # groups per img
-        for j, box_px in enumerate(fused_boxes_px):
-            cls = int(labels_fused[j])
-            box_norm = boxes_fused[j]
-            conf = float(scores_fused[j])
+        # lines = []  # groups per img
+        # for j, box_px in enumerate(fused_boxes_px):
+        #     cls = int(labels_fused[j])
+        #     box_norm = boxes_fused[j]
+        #     conf = float(scores_fused[j])
             
-            # prepare pixel cooridates for stage2
-            x1, y1, x2, y2 = map(int, box_px)
-            crop = im[y1:y2, x1:x2]
-            crop_name = f"{img_name}_{j}.png"
-            crop_path = os.path.join(output_dir, crop_name)
-            cv2.imwrite(crop_path, crop)
-            crops.append((crop_path, cls, img_name, x1, y1, conf))    # crop_name, x1, y1 are used for reprojection
+        #     # prepare pixel cooridates for stage2
+        #     x1, y1, x2, y2 = map(int, box_px)
+        #     crop = im[y1:y2, x1:x2]
+        #     crop_name = f"{img_name}_{j}.png"
+        #     crop_path = os.path.join(output_dir, crop_name)
+        #     cv2.imwrite(crop_path, crop)
+        #     crops.append((crop_path, cls, img_name, x1, y1, conf))    # crop_name, x1, y1 are used for reprojection
             
-            # output normalized coordiantes for evaluation of stage 1 
-            cx1, cy1, w1, h1 = box_norm
-            lines.append(f"{cls} {cx1:.6f} {cy1:.6f} {w1:.6f} {h1:.6f} {conf:.4f}\n")
+        #     # output normalized coordiantes for evaluation of stage 1 
+        #     cx1, cy1, w1, h1 = box_norm
+        #     lines.append(f"{cls} {cx1:.6f} {cy1:.6f} {w1:.6f} {h1:.6f} {conf:.4f}\n")
             
-        with open(label_file, "w") as f:
-            f.writelines(lines)
+        # with open(label_file, "w") as f:
+        #     f.writelines(lines)
             
     return crops
 
@@ -148,67 +375,106 @@ def run_stage2_inference_old(model_path, crop_list, save_dir):
         results = model.predict(source=crop_path, save=True, project=save_dir, name="stage2", exist_ok=True)
         # print(f"Processed: {crop_path}")
 
-def run_stage2_inference(model_path, crop_list, save_root):
+def run_stage2_inference(model_path, crop_list, output_dir):
+
+    imgage_dir = os.path.join(output_dir, "images")
+    wbf_image_dir = os.path.join(output_dir, "images_wbf")
+    preview_dir = os.path.join(output_dir, "preview")
+    wbf_preview_dir = os.path.join(output_dir, "preview_wbf")
+    labels_dir = os.path.join(output_dir, "labels")
+    wbf_labels_dir = os.path.join(output_dir, "labels_wbf")
+
+    os.makedirs(output_dir, exist_ok=True)
+    for folder in [imgage_dir, wbf_image_dir, preview_dir, wbf_preview_dir, labels_dir, wbf_labels_dir]:
+        if os.path.exists(folder):
+            shutil.rmtree(folder)
+        os.makedirs(folder, exist_ok=True)
+
+    output_dirs = {"imgage_dir":imgage_dir,
+                    "wbf_image_dir":wbf_image_dir,
+                    "preview_dir":preview_dir,
+                    "wbf_preview_dir":wbf_preview_dir,
+                    "labels_dir":labels_dir,
+                    "wbf_labels_dir":wbf_labels_dir}
+
     model = YOLO(model_path)
-
-    # pred_dir = os.path.join(save_root, "stage2")
-    labels_dir = os.path.join(save_root, "labels")
-    images_dir = os.path.join(save_root, "images")
-    os.makedirs(labels_dir, exist_ok=True)
-    os.makedirs(images_dir, exist_ok=True)
-
-    # for crop_path, parent_cls, img_name, x1, y1 in crop_list:
-        # crop = cv2.imread(crop_path)
-        # results = model.predict(source=crop, conf=0.25, save=False, imgsz=640)[0]  # get only first result
-
-        # if results.boxes is not None:
-            # label_lines = []
-            # for box, cls in zip(results.boxes.xywhn.cpu().numpy(), results.boxes.cls.cpu().numpy()):
-                # cls = int(cls)
-                # cx, cy, w, h = box  # normalized
-                # label_lines.append(f"{cls} {cx:.6f} {cy:.6f} {w:.6f} {h:.6f}")
-
-            # base_name = Path(crop_path).stem
-            # label_file = os.path.join(labels_dir, f"{base_name}.txt")
-            # with open(label_file, "w") as f:
-                # f.write("\n".join(label_lines))
-
-        # shutil.copy(crop_path, os.path.join(images_dir, Path(crop_path).name))
-        
-    # change to batch process
-    crops = []
-    metadata = []
     
+    crops = []  
+    # information about crops in the previous stage is included in crop_list
+    # need to extract the images for inference: saved in crops
     for crop_path, parent_cls, img_name, x1, y1, conf1 in crop_list:
         
         crop = cv2.imread(crop_path)
         if crop is None:
             continue
         crops.append(crop)
-        metadata.append((crop_path, parent_cls, img_name, x1, y1, conf1))
         
-    results = model.predict(source=crops, conf=0.35, save=False, iou=0.5)
-    
+    results = model.predict(source=crops, conf=conf_threshold, save=False)
+
+    objects = []
     for i, r in enumerate(results):
-        crop_path, parent_cls, img_name, x1, y1, conf1 = metadata[i]
-        crop_h, crop_w = crops[i].shape[:2]
+        objects.extend(export_obj_in_image(r, output_dirs, class_names, True))
+
+    # model = YOLO(model_path)
+
+    # # pred_dir = os.path.join(save_root, "stage2")
+    # labels_dir = os.path.join(save_root, "labels")
+    # images_dir = os.path.join(save_root, "images")
+    # os.makedirs(labels_dir, exist_ok=True)
+    # os.makedirs(images_dir, exist_ok=True)
+
+    # # for crop_path, parent_cls, img_name, x1, y1 in crop_list:
+    #     # crop = cv2.imread(crop_path)
+    #     # results = model.predict(source=crop, conf=0.25, save=False, imgsz=640)[0]  # get only first result
+
+    #     # if results.boxes is not None:
+    #         # label_lines = []
+    #         # for box, cls in zip(results.boxes.xywhn.cpu().numpy(), results.boxes.cls.cpu().numpy()):
+    #             # cls = int(cls)
+    #             # cx, cy, w, h = box  # normalized
+    #             # label_lines.append(f"{cls} {cx:.6f} {cy:.6f} {w:.6f} {h:.6f}")
+
+    #         # base_name = Path(crop_path).stem
+    #         # label_file = os.path.join(labels_dir, f"{base_name}.txt")
+    #         # with open(label_file, "w") as f:
+    #             # f.write("\n".join(label_lines))
+
+    #     # shutil.copy(crop_path, os.path.join(images_dir, Path(crop_path).name))
+        
+    # # change to batch process
+    # crops = []
+    # metadata = []
     
-        # base_name = Path(crop_path).stem
-        label_file = os.path.join(labels_dir, f"{Path(crop_path).stem}.txt")
+    # for crop_path, parent_cls, img_name, x1, y1, conf1 in crop_list:
+        
+    #     crop = cv2.imread(crop_path)
+    #     if crop is None:
+    #         continue
+    #     crops.append(crop)
+    #     metadata.append((crop_path, parent_cls, img_name, x1, y1, conf1))
+        
+    # results = model.predict(source=crops, conf=0.35, save=False, iou=0.5)
     
-        lines = []  # bulbs per crop
-        # get local coordinates for stage level evaluation
-        for box, cls, conf in zip(r.boxes.xywhn.cpu().numpy(),
-                                  r.boxes.cls.cpu().numpy(),
-                                  r.boxes.conf.cpu().numpy()):
-            cls2 = int(cls)
-            conf2 = float(conf)
-            cx2, cy2, w2, h2 = box
-            lines.append(f"{cls2} {cx2:.6f} {cy2:.6f} {w2:.6f} {h2:.6f} {conf2 * conf1 ** 0.5:.4f}\n")
+    # for i, r in enumerate(results):
+    #     crop_path, parent_cls, img_name, x1, y1, conf1 = metadata[i]
+    #     crop_h, crop_w = crops[i].shape[:2]
+    
+    #     # base_name = Path(crop_path).stem
+    #     label_file = os.path.join(labels_dir, f"{Path(crop_path).stem}.txt")
+    
+    #     lines = []  # bulbs per crop
+    #     # get local coordinates for stage level evaluation
+    #     for box, cls, conf in zip(r.boxes.xywhn.cpu().numpy(),
+    #                               r.boxes.cls.cpu().numpy(),
+    #                               r.boxes.conf.cpu().numpy()):
+    #         cls2 = int(cls)
+    #         conf2 = float(conf)
+    #         cx2, cy2, w2, h2 = box
+    #         lines.append(f"{cls2} {cx2:.6f} {cy2:.6f} {w2:.6f} {h2:.6f} {conf2 * conf1 ** 0.5:.4f}\n")
             
-        with open(label_file, "w") as f:
-            f.writelines(lines)       
-        # shutil.copy(crop_path, os.path.join(images_dir, Path(crop_path).name))
+    #     with open(label_file, "w") as f:
+    #         f.writelines(lines)       
+    #     # shutil.copy(crop_path, os.path.join(images_dir, Path(crop_path).name))
 
 
 # step 3 functions      
@@ -349,6 +615,7 @@ reproject_all(stage2_pred_dir=stage2_output_path,
 # log_metrics(metrics, log_path)
 
 # pip install pycocotools matplotlib opencv-python tqdm
+
 
 
 
