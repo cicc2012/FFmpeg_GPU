@@ -16,6 +16,12 @@ import numpy as np
 # CONFIG
 # -----------------------------
 stage1_keep_classes=[0,1]
+stage2_keep_classes=[0,1,2,3]
+
+pipeline_mode = True  # True for full pipeline, False for single stage
+
+conf_threshold = 0.25  # Confidence threshold for YOLO predictions
+iou_threshold = 0.5  # IoU threshold for NMS
 
 test_signal_gt_path=str(Path(r"F:\dataset\Night2.0.0\labels_signal_front\val"))
 # 0: 'Traffic Light Bulb Red'
@@ -33,6 +39,7 @@ stage2_model_path=str(Path(r"F:\Test\Yolo\runs\detect\train15\weights\best.pt"))
 
 stage1_input_path=str(Path(r"F:\dataset\Night2.0.0\images\val"))
 stage1_output_path=str(Path(r"F:\dataset\Night2.0.0\test\all\crop"))
+stage2_input_path=stage1_output_path if pipeline_mode else str(Path(r"F:\dataset\Night2.0.0\crop\images\val"))
 stage2_output_path=str(Path(r"F:\dataset\Night2.0.0\test\all\predict"))
 
 final_output_path=str(Path(r"F:\dataset\Night2.0.0\test\all\predict\overall"))
@@ -52,9 +59,6 @@ colors = [
 class_names = ['red', 'yellow', 'green', 'null']
 group_names = ['front', 'side']
 group_filters = [0]
-
-conf_threshold = 0.25  # Confidence threshold for YOLO predictions
-iou_threshold = 0.5  # IoU threshold for NMS
 
 dirs_map = {'images': 'images',
             'images_wbf': 'images_wbf',
@@ -388,7 +392,7 @@ def run_stage2_inference_old(model_path, crop_list, save_dir):
         results = model.predict(source=crop_path, save=True, project=save_dir, name="stage2", exist_ok=True)
         # print(f"Processed: {crop_path}")
 
-def run_stage2_inference(model_path, crop_list, output_dir):
+def run_stage2_inference(model_path, source_dir, output_dir):
 
     imgage_dir = os.path.join(output_dir, dirs_map["images"])
     wbf_image_dir = os.path.join(output_dir, dirs_map["images_wbf"])
@@ -421,15 +425,12 @@ def run_stage2_inference(model_path, crop_list, output_dir):
     #     if crop is None:
     #         continue
     #     crops.append(crop)
-    if len(crop_list) == 0:
-        print("No crops to process for stage 2 inference.")
-        return []
 
-    crop_path = crop_list[0][0]  # Use the first crop to get the image size
-    crop_folder = os.path.dirname(crop_path)
-    print(f'Applying stage 2 inference on {len(crop_list)} crops from {crop_path}')
-        
-    results = model.predict(source=crop_folder, conf=conf_threshold, save=False)
+    subfolder = dirs_map["images_wbf"] if use_wbf else dirs_map["images"]
+    crop_path = source_dir if not pipeline_mode else os.path.join(source_dir, subfolder)
+    print(f'Applying stage 2 inference on crops from {crop_path}')
+
+    results = model.predict(source=crop_path, conf=conf_threshold, save=False)
 
     objects = []
     for i, r in enumerate(results):
@@ -567,6 +568,8 @@ def reproject_all(stage2_pred_dir, crop_info_list, output_pred_dir, full_img_dir
             box_global_norm = reproject_yolo_box(box, x1, y1, crop_w, crop_h, full_w, full_h)
             if img_name not in reprojected_preds:
                 reprojected_preds[img_name] = []
+            if pipeline_mode:
+                conf = conf * parent_conf ** 0.5  # combine confidence with parent confidence
             reprojected_preds[img_name].append((cls, box_global_norm, box_global_px, conf))
 
     # Write labels as normalizedglobal coordinates
@@ -673,7 +676,7 @@ def main():
     # 2. Run Stage 2 inference on crops  
     run_stage2_inference(
         stage2_model_path,
-        stage1_detections,
+        stage2_input_path,
         stage2_output_path)
 
     # 3. Reproject Stage 2 detections to full image
