@@ -31,13 +31,14 @@ IMG_SIZE_CACHE = {}
 OUTPUT_DIR =  str(Path(r"F:\dataset\Night2.0.0\test\all\crop\evaluation\coco_eval"))
 
 # for stage 2
+# need to test stage 2 only: separated from stage 1
 # CLASS_NAMES = ['Traffic Light Bulb Red','Traffic Light Bulb Yellow','Traffic Light Bulb Green','Traffic Light Bulb Null']
-# YOLO_IMG_DIR = str(Path(r"F:\dataset\Night2.0.0\images\val"))
-# YOLO_LABEL_DIR = str(Path(r"F:\dataset\Night2.0.0\labels_group\val"))
-# YOLO_PRED_DIR = str(Path(r"F:\dataset\Night2.0.0\test\all\crop\labels"))
+# YOLO_IMG_DIR = str(Path(r"F:\dataset\Night2.0.0\crop\images\val"))
+# YOLO_LABEL_DIR = str(Path(r"F:\dataset\Night2.0.0\crop\labels\val"))
+# YOLO_PRED_DIR = str(Path(r"F:\dataset\Night2.0.0\test\all\predict\labels_wbf"))
 # IMG_EXT = ".png"
 # IMG_SIZE_CACHE = {}
-# OUTPUT_DIR =  str(Path(r"F:\dataset\Night2.0.0\test\all\phases\phase1"))
+# OUTPUT_DIR =  str(Path(r"F:\dataset\Night2.0.0\test\all\predict\evaluation\coco_eval"))
 
 # for overall process
 

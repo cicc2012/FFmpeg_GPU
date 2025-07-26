@@ -10,6 +10,7 @@ import torch
 import numpy as np
 
 # pip install ensemble-boxes
+# pip install pycocotools matplotlib opencv-python tqdm
 
 # -----------------------------
 # CONFIG
@@ -38,12 +39,14 @@ final_output_path=str(Path(r"F:\dataset\Night2.0.0\test\all\predict\overall"))
 final_eval_path=str(Path(r"F:\dataset\Night2.0.0\test\all\evaluation"))
 log_path=str(Path(r"F:\dataset\Night2.0.0\test\all\evaluation\eval_log.csv"))
 
+use_wbf = True  # Whether to use WBF for each stage
+
 # Assign a unique color to each class
 colors = [
-    (255, 0, 0),    # Red
-    (255, 255, 0),  # Yellow
+    (0, 0, 255),    # Red
+    (0, 255, 255),  # Yellow
     (0, 255, 0),    # Green
-    (255, 0, 255),  # Magenta
+    (255, 0, 255),  # Blue for 'null' class
 ]
 
 class_names = ['red', 'yellow', 'green', 'null']
@@ -52,6 +55,14 @@ group_filters = [0]
 
 conf_threshold = 0.25  # Confidence threshold for YOLO predictions
 iou_threshold = 0.5  # IoU threshold for NMS
+
+dirs_map = {'images': 'images',
+            'images_wbf': 'images_wbf',
+            'previews': 'previews',
+            'previews_wbf': 'previews_wbf',
+            'labels': 'labels',
+            'labels_wbf': 'labels_wbf'
+            }
 
 # step 1 function
 # Normalize Boxes for WBF, inside each img (boxes from each img)
@@ -90,8 +101,9 @@ def write_images_previews_in_image(im_path, boxes_px, classes, scores, image_dir
         # Draw the object preview
         color = colors[int(cls) if int(cls) < len(colors) else 0]
         label = f"{obj_names[int(cls) if int(cls) < len(obj_names) else 0]}: {conf:.4f}"
-        cv2.rectangle(im, (x1, y1), (x2, y2), (0, 255, 0), 2)
+        cv2.rectangle(im, (x1, y1), (x2, y2), (255, 255, 255), 2) # write rectangle: one color for each stage
         cv2.putText(im, label, (x1 + 5, y2 + 20), cv2.FONT_HERSHEY_SIMPLEX, 1.0, color, 2)
+        # TODO: [minor] text coordinates can be adjusted to avoid overlap with the nearby boxes (this will affect the evaluation results)
     
     # Save the previews of this image
     cv2.imwrite(preview_path, im)
@@ -222,6 +234,7 @@ def export_obj_in_image(result, output_parent_dirs, obj_names, is_wbf=False):
 
         fused_boxes_px = denormalize_boxes(boxes_fused, full_w, full_h)
 
+        crops = []
         crops = write_images_previews_in_image(
             im_path, fused_boxes_px, labels_fused, scores_fused, 
             wbf_image_dir, wbf_preview_dir, obj_names
@@ -257,12 +270,12 @@ def export_label_in_image(result, output_dir):
 
 
 def run_stage1_inference(model_path, source_dir, output_dir):
-    imgage_dir = os.path.join(output_dir, "images")
-    wbf_image_dir = os.path.join(output_dir, "images_wbf")
-    preview_dir = os.path.join(output_dir, "preview")
-    wbf_preview_dir = os.path.join(output_dir, "preview_wbf")
-    labels_dir = os.path.join(output_dir, "labels")
-    wbf_labels_dir = os.path.join(output_dir, "labels_wbf")
+    imgage_dir = os.path.join(output_dir, dirs_map["images"])
+    wbf_image_dir = os.path.join(output_dir, dirs_map["images_wbf"])
+    preview_dir = os.path.join(output_dir, dirs_map["previews"])
+    wbf_preview_dir = os.path.join(output_dir, dirs_map["previews_wbf"])
+    labels_dir = os.path.join(output_dir, dirs_map["labels"])
+    wbf_labels_dir = os.path.join(output_dir, dirs_map["labels_wbf"])
 
     for folder in [imgage_dir, wbf_image_dir, preview_dir, wbf_preview_dir, labels_dir, wbf_labels_dir]:
         if os.path.exists(folder):
@@ -289,7 +302,7 @@ def run_stage1_inference(model_path, source_dir, output_dir):
 
     crops = []
     for i, r in enumerate(results):
-        crops.extend(export_obj_in_image(r, output_dirs, group_names, True))
+        crops.extend(export_obj_in_image(r, output_dirs, group_names, use_wbf))
 
         # im_path = r.path
         # im = cv2.imread(im_path)
@@ -377,12 +390,12 @@ def run_stage2_inference_old(model_path, crop_list, save_dir):
 
 def run_stage2_inference(model_path, crop_list, output_dir):
 
-    imgage_dir = os.path.join(output_dir, "images")
-    wbf_image_dir = os.path.join(output_dir, "images_wbf")
-    preview_dir = os.path.join(output_dir, "preview")
-    wbf_preview_dir = os.path.join(output_dir, "preview_wbf")
-    labels_dir = os.path.join(output_dir, "labels")
-    wbf_labels_dir = os.path.join(output_dir, "labels_wbf")
+    imgage_dir = os.path.join(output_dir, dirs_map["images"])
+    wbf_image_dir = os.path.join(output_dir, dirs_map["images_wbf"])
+    preview_dir = os.path.join(output_dir, dirs_map["previews"])
+    wbf_preview_dir = os.path.join(output_dir, dirs_map["previews_wbf"])
+    labels_dir = os.path.join(output_dir, dirs_map["labels"])
+    wbf_labels_dir = os.path.join(output_dir, dirs_map["labels_wbf"])
 
     os.makedirs(output_dir, exist_ok=True)
     for folder in [imgage_dir, wbf_image_dir, preview_dir, wbf_preview_dir, labels_dir, wbf_labels_dir]:
@@ -399,21 +412,28 @@ def run_stage2_inference(model_path, crop_list, output_dir):
 
     model = YOLO(model_path)
     
-    crops = []  
-    # information about crops in the previous stage is included in crop_list
-    # need to extract the images for inference: saved in crops
-    for crop_path, parent_cls, img_name, x1, y1, conf1 in crop_list:
+    # crops = []  
+    # # information about crops in the previous stage is included in crop_list
+    # # need to extract the images for inference: saved in crops
+    # for crop_path, parent_cls, img_name, x1, y1, conf1 in crop_list:
         
-        crop = cv2.imread(crop_path)
-        if crop is None:
-            continue
-        crops.append(crop)
+    #     crop = cv2.imread(crop_path)
+    #     if crop is None:
+    #         continue
+    #     crops.append(crop)
+    if len(crop_list) == 0:
+        print("No crops to process for stage 2 inference.")
+        return []
+
+    crop_path = crop_list[0][0]  # Use the first crop to get the image size
+    crop_folder = os.path.dirname(crop_path)
+    print(f'Applying stage 2 inference on {len(crop_list)} crops from {crop_path}')
         
-    results = model.predict(source=crops, conf=conf_threshold, save=False)
+    results = model.predict(source=crop_folder, conf=conf_threshold, save=False)
 
     objects = []
     for i, r in enumerate(results):
-        objects.extend(export_obj_in_image(r, output_dirs, class_names, True))
+        objects.extend(export_obj_in_image(r, output_dirs, class_names, use_wbf))
 
     # model = YOLO(model_path)
 
@@ -492,13 +512,24 @@ def reproject_yolo_box(box, crop_x1, crop_y1, crop_w, crop_h, full_w, full_h):
 
     return [new_cx, new_cy, new_w, new_h]
 
+# Reproject all boxes from cropped images to full images
+# results in stage2_pred_dir are normalized local coordinates, and need to have the results of stage1
+# to map local to global coordinates: full_img_dir is used to get the full image size
 def reproject_all(stage2_pred_dir, crop_info_list, output_pred_dir, full_img_dir):
-    os.makedirs(output_pred_dir, exist_ok=True)
+    preview_dir = os.path.join(output_pred_dir, dirs_map["previews"])
+    labels_dir = os.path.join(output_pred_dir, dirs_map["labels"])
 
-    merged_preds = {}
+    os.makedirs(preview_dir, exist_ok=True)
+    os.makedirs(labels_dir, exist_ok=True)
+    # os.makedirs(output_pred_dir, exist_ok=True)
 
-    for (crop_path, parent_cls, img_name, x1, y1, conf) in crop_info_list:
-        crop_pred_file = Path(stage2_pred_dir) / "labels" / (Path(crop_path).stem + ".txt")
+    reprojected_preds = {} # to store reprojected predictions for each image
+    parent_boxes = {}  # to store parent box for each image
+
+    # iterate through each crop info: img_name is the full/parent image name
+    for (crop_path, parent_cls, img_name, x1, y1, parent_conf) in crop_info_list:
+        subfolder = dirs_map["labels_wbf"] if use_wbf else dirs_map["labels"]
+        crop_pred_file = Path(stage2_pred_dir) / subfolder / (Path(crop_path).stem + ".txt")
         if not crop_pred_file.exists():
             continue
 
@@ -507,27 +538,72 @@ def reproject_all(stage2_pred_dir, crop_info_list, output_pred_dir, full_img_dir
         full_h, full_w = full_img.shape[:2]
         crop_img = cv2.imread(str(crop_path))
         crop_h, crop_w = crop_img.shape[:2]
+        x2 = x1 + crop_w
+        y2 = y1 + crop_h
+        parent_box_px = (x1, y1, x2, y2)
+        if img_name not in parent_boxes:
+            parent_boxes[img_name] = []
+        parent_boxes[img_name].append((parent_cls, parent_box_px, parent_conf))
 
         with open(crop_pred_file, "r") as f:
             lines = f.readlines()
 
+        # for each stage 2 object, get its local coordinate and reproject to global coordinate
         for line in lines:
             parts = line.strip().split()
             cls = int(parts[0])
             box = list(map(float, parts[1:5]))
             conf = float(parts[5])
 
-            new_box = reproject_yolo_box(box, x1, y1, crop_w, crop_h, full_w, full_h)
-            if img_name not in merged_preds:
-                merged_preds[img_name] = []
-            merged_preds[img_name].append((cls, new_box, conf))
+            # get px global coordinates
+            x_center, y_center, w, h = map(float, parts[1:5])
+            x_min = (x_center - w / 2) * crop_w + x1
+            y_min = (y_center - h / 2) * crop_h + y1
+            x_max = x_min + w * crop_w
+            y_max = y_min + h * crop_h
+            box_global_px = (x_min, y_min, x_max, y_max)
+            
+            # get normalized global coordinates
+            box_global_norm = reproject_yolo_box(box, x1, y1, crop_w, crop_h, full_w, full_h)
+            if img_name not in reprojected_preds:
+                reprojected_preds[img_name] = []
+            reprojected_preds[img_name].append((cls, box_global_norm, box_global_px, conf))
 
-    # Write merged predictions in YOLO format
-    for img_name, boxes in merged_preds.items():
-        out_file = Path(output_pred_dir) / f"{img_name}.txt"
-        with open(out_file, "w") as f:
-            for cls, box, conf in boxes:
-                f.write(f"{cls} {' '.join(map(lambda x: f'{x:.6f}', box))} {conf}\n")
+    # Write labels as normalizedglobal coordinates
+    for img_name, boxes in reprojected_preds.items():
+        
+        label_file = Path(labels_dir) / f"{img_name}.txt"
+        
+        with open(label_file, "w") as f:
+            for cls, box_norm, box_px, conf in boxes:
+                f.write(f"{cls} {' '.join(map(lambda x: f'{x:.6f}', box_norm))} {conf}\n")
+        
+    # Write previews with reprojected boxes: parent boxes and reprojected boxes
+
+    # Draw parent boxes on the full image
+    for img_name, parent_boxes in parent_boxes.items():
+        
+        full_img = cv2.imread(str(Path(full_img_dir) / f"{img_name}.png"))
+        preview_file = Path(preview_dir) / f"{img_name}.png"
+
+        # Draw parent boxes on the full image
+        for parent_cls, parent_box_px, parent_conf in parent_boxes:
+            x1, y1, x2, y2 = map(int, parent_box_px)
+            cv2.rectangle(full_img, (x1, y1), (x2, y2), (255, 255, 0), 2)
+            label1 = f"{group_names[int(parent_cls)]}"
+            color = colors[int(parent_cls) if int(parent_cls) < len(colors) else 0]
+            cv2.putText(full_img, label1 + ':' + str(parent_conf), (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 255, 255), 2)
+
+        # Draw reprojected boxes on the full image
+        # parent_boxes and reprojected_preds are both dicts with img_name as keys
+        boxes = reprojected_preds.get(img_name, [])
+        for cls, box_norm, box_px, conf in boxes:
+            x1, y1, x2, y2 = map(int, box_px)
+            cv2.rectangle(full_img, (x1, y1), (x2, y2), (255, 255, 255), 2)
+            label2 = f"{class_names[int(cls)]}"
+            color = colors[int(cls) if int(cls) < len(colors) else 0]
+            cv2.putText(full_img, label2 + ':' + str(conf), (x1 + 5, y1 + 5), cv2.FONT_HERSHEY_SIMPLEX, 1.2, color, 2)
+        cv2.imwrite(str(preview_file), full_img)
 
 # step 4 function
 def prepare_eval_dir(gt_dir, img_dir, pred_dir, eval_dir):
@@ -584,37 +660,43 @@ def log_metrics(metrics, output_csv):
 
 # overall process
 
-# 1. Run Stage 1 inference (crop A/F)
-stage1_detections = run_stage1_inference(
-    stage1_model_path,
-    stage1_input_path,
-    stage1_output_path)
+# -----------------------------
+# MAIN
+# -----------------------------
+def main():
+    # 1. Run Stage 1 inference (crop A/F)
+    stage1_detections = run_stage1_inference(
+        stage1_model_path,
+        stage1_input_path,
+        stage1_output_path)
 
-# 2. Run Stage 2 inference on crops  
-run_stage2_inference(
-    stage2_model_path,
-    stage1_detections,
-    stage2_output_path)
+    # 2. Run Stage 2 inference on crops  
+    run_stage2_inference(
+        stage2_model_path,
+        stage1_detections,
+        stage2_output_path)
 
-# 3. Reproject Stage 2 detections to full image
-reproject_all(stage2_pred_dir=stage2_output_path,
-              crop_info_list=stage1_detections,
-              output_pred_dir=final_output_path,
-              full_img_dir=stage1_input_path)
+    # 3. Reproject Stage 2 detections to full image
+    reproject_all(stage2_pred_dir=stage2_output_path,
+                  crop_info_list=stage1_detections,
+                  output_pred_dir=final_output_path,
+                  full_img_dir=stage1_input_path)
 
-# 4. Prepare final eval dir with GT
-# prepare_eval_dir(gt_dir=test_signal_gt_path,
-                 # img_dir=stage1_input_path,
-                 # pred_dir=final_output_path,
-                 # eval_dir=final_eval_path)
+    # 4. Prepare final eval dir with GT
+    # prepare_eval_dir(gt_dir=test_signal_gt_path,
+                     # img_dir=stage1_input_path,
+                     # pred_dir=final_output_path,
+                     # eval_dir=final_eval_path)
 
-# 5. Run final evaluation
-# metrics = run_final_evaluation(stage2_model_path, final_eval_path)
+    # 5. Run final evaluation
+    # metrics = run_final_evaluation(stage2_model_path, final_eval_path)
 
-# 6. Optional: Save logs
-# log_metrics(metrics, log_path)
+    # 6. Optional: Save logs
+    # log_metrics(metrics, log_path)
 
-# pip install pycocotools matplotlib opencv-python tqdm
+if __name__ == "__main__":
+    main()
+
 
 
 
