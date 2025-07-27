@@ -19,15 +19,13 @@ stage1_keep_classes=[0,1]
 stage2_keep_classes=[0,1,2,3]
 
 pipeline_mode = True  # True for full pipeline, False for single stage
+view_code = 0 # 0 for front, 1 for side, 11 for both
 
-conf_threshold = 0.25  # Confidence threshold for YOLO predictions
+conf_threshold1 = 0.001  # Confidence threshold for stage 1 predictions
+conf_threshold2 = 0.001  # Confidence threshold for stage 2 predictions
 iou_threshold = 0.5  # IoU threshold for NMS
 
-test_signal_gt_path=str(Path(r"F:\dataset\Night2.0.0\labels_signal_front\val"))
-# 0: 'Traffic Light Bulb Red'
-# 1: 'Traffic Light Bulb Yellow'
-# 2: 'Traffic Light Bulb Green'
-# 3: 'Traffic Light Bulb Null'
+
 stage1_model_path=str(Path(r"F:\Test\Yolo\runs\detect\train14\weights\best.pt"))
 # 0: 'Traffic Light Group'
 # 1: 'Traffic Light Group Side'
@@ -37,14 +35,34 @@ stage2_model_path=str(Path(r"F:\Test\Yolo\runs\detect\train15\weights\best.pt"))
 # 2: 'Traffic Light Bulb Green'
 # 3: 'Traffic Light Bulb Null'
 
-stage1_input_path=str(Path(r"F:\dataset\Night2.0.0\images\val"))
-stage1_output_path=str(Path(r"F:\dataset\Night2.0.0\test\all\crop"))
-stage2_input_path=stage1_output_path if pipeline_mode else str(Path(r"F:\dataset\Night2.0.0\crop\images\val"))
-stage2_output_path=str(Path(r"F:\dataset\Night2.0.0\test\all\predict"))
+if view_code == 0:  # Front view
+    test_signal_gt_path=str(Path(r"F:\dataset\Night2.0.0\labels_signal_front\val"))
+    # 0: 'Traffic Light Bulb Red'
+    # 1: 'Traffic Light Bulb Yellow'
+    # 2: 'Traffic Light Bulb Green'
+    # 3: 'Traffic Light Bulb Null'
+    stage1_input_path=str(Path(r"F:\dataset\Night2.0.0\images_front\val"))
+    stage1_output_path=str(Path(r"F:\dataset\Night2.0.0\test\front\crop"))
+    stage2_input_path=stage1_output_path #if pipeline_mode else str(Path(r"F:\dataset\Night2.0.0\crop\images\val"))
+    stage2_output_path=str(Path(r"F:\dataset\Night2.0.0\test\front\predict"))
 
-final_output_path=str(Path(r"F:\dataset\Night2.0.0\test\all\predict\overall"))
-final_eval_path=str(Path(r"F:\dataset\Night2.0.0\test\all\evaluation"))
-log_path=str(Path(r"F:\dataset\Night2.0.0\test\all\evaluation\eval_log.csv"))
+    final_output_path=str(Path(r"F:\dataset\Night2.0.0\test\front\predict\overall"))
+    final_eval_path=str(Path(r"F:\dataset\Night2.0.0\test\front\evaluation"))
+    log_path=str(Path(r"F:\dataset\Night2.0.0\test\front\evaluation\eval_log.csv"))
+else:
+    test_signal_gt_path=str(Path(r"F:\dataset\Night2.0.0\labels_signal\val"))
+    # 0: 'Traffic Light Bulb Red'
+    # 1: 'Traffic Light Bulb Yellow'
+    # 2: 'Traffic Light Bulb Green'
+    # 3: 'Traffic Light Bulb Null'
+    stage1_input_path=str(Path(r"F:\dataset\Night2.0.0\images\val"))
+    stage1_output_path=str(Path(r"F:\dataset\Night2.0.0\test\all\crop"))
+    stage2_input_path=stage1_output_path if pipeline_mode else str(Path(r"F:\dataset\Night2.0.0\crop\images\val"))
+    stage2_output_path=str(Path(r"F:\dataset\Night2.0.0\test\all\predict"))
+
+    final_output_path=str(Path(r"F:\dataset\Night2.0.0\test\all\predict\overall"))
+    final_eval_path=str(Path(r"F:\dataset\Night2.0.0\test\all\evaluation"))
+    log_path=str(Path(r"F:\dataset\Night2.0.0\test\all\evaluation\eval_log.csv"))
 
 use_wbf = True  # Whether to use WBF for each stage
 
@@ -60,6 +78,8 @@ class_names = ['red', 'yellow', 'green', 'null']
 group_names = ['front', 'side']
 group_filters = [0]
 
+# Change the directory structure with personal preference, if needed
+# Key: program directory, Value: actual directory name
 dirs_map = {'images': 'images',
             'images_wbf': 'images_wbf',
             'previews': 'previews',
@@ -301,7 +321,8 @@ def run_stage1_inference(model_path, source_dir, output_dir):
     # os.makedirs(labels_dir_wbf, exist_ok=True)
     
     # results = model.predict(source=source_dir, save=False, conf=0.35, iou=0.5) # default conf=0.25, iou=0.7
-    results = model.predict(source=source_dir, save=False, conf=conf_threshold)  # default conf=0.25, iou=0.7
+    classes = [0] if view_code == 0 else [0, 1]  # Only A or F for front view, A and F for side view
+    results = model.predict(source=source_dir, save=False, conf=conf_threshold1, classes=classes)  # default conf=0.25, iou=0.7
     # lower iou for nms
 
     crops = []
@@ -430,7 +451,7 @@ def run_stage2_inference(model_path, source_dir, output_dir):
     crop_path = source_dir if not pipeline_mode else os.path.join(source_dir, subfolder)
     print(f'Applying stage 2 inference on crops from {crop_path}')
 
-    results = model.predict(source=crop_path, conf=conf_threshold, save=False)
+    results = model.predict(source=crop_path, conf=conf_threshold2, save=False)
 
     objects = []
     for i, r in enumerate(results):
@@ -569,7 +590,7 @@ def reproject_all(stage2_pred_dir, crop_info_list, output_pred_dir, full_img_dir
             if img_name not in reprojected_preds:
                 reprojected_preds[img_name] = []
             if pipeline_mode:
-                conf = conf * parent_conf ** 0.5  # combine confidence with parent confidence
+                conf = (conf * parent_conf) ** 0.5  # combine confidence with parent confidence
             reprojected_preds[img_name].append((cls, box_global_norm, box_global_px, conf))
 
     # Write labels as normalizedglobal coordinates
@@ -579,7 +600,7 @@ def reproject_all(stage2_pred_dir, crop_info_list, output_pred_dir, full_img_dir
         
         with open(label_file, "w") as f:
             for cls, box_norm, box_px, conf in boxes:
-                f.write(f"{cls} {' '.join(map(lambda x: f'{x:.6f}', box_norm))} {conf}\n")
+                f.write(f"{cls} {' '.join(map(lambda x: f'{x:.6f}', box_norm))} {conf:.4f}\n")
         
     # Write previews with reprojected boxes: parent boxes and reprojected boxes
 
@@ -605,6 +626,7 @@ def reproject_all(stage2_pred_dir, crop_info_list, output_pred_dir, full_img_dir
             cv2.rectangle(full_img, (x1, y1), (x2, y2), (255, 255, 255), 2)
             label2 = f"{class_names[int(cls)]}"
             color = colors[int(cls) if int(cls) < len(colors) else 0]
+            conf = f"{conf:.4f}"
             cv2.putText(full_img, label2 + ':' + str(conf), (x1 + 5, y1 + 5), cv2.FONT_HERSHEY_SIMPLEX, 1.2, color, 2)
         cv2.imwrite(str(preview_file), full_img)
 
