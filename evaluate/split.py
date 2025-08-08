@@ -1,10 +1,13 @@
 import os
 from pathlib import Path
 
+# This script processes YOLO label files to split them into two collections based on class IDs.
+# It creates two sets of label files: one for A and F classes (0 and 5), and another for B, C, D, E classes (1, 2, 3, 4).
+
 # Define source and destination paths
-src_labels_dir = str(Path(r'F:\dataset\Night2.0.0\labels_all\val'))         # Original YOLO label files
-dst_col1_dir = str(Path(r'F:\dataset\Night2.0.0\labels_group\val'))        # For A and F
-dst_col2_dir = str(Path(r'F:\dataset\Night2.0.0\labels_signal\val'))        # For B, C, D, E
+src_labels_dir = str(Path(r'F:\dataset\Night2.0.1\labels\train'))         # Original YOLO label files
+dst_col1_dir = str(Path(r'F:\dataset\Night2.0.1\labels_group\train'))        # For A and F
+dst_col2_dir = str(Path(r'F:\dataset\Night2.0.1\labels_signal\train'))        # For B, C, D, E
 
 # Create output folders
 os.makedirs(dst_col1_dir, exist_ok=True)

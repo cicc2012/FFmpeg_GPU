@@ -3,11 +3,17 @@ import shutil
 import random
 from pathlib import Path
 
+# The original images and labels are in folder A and C respectively.
+# The names of the images and labels should match, except for the file extension.
+# The selected/shuffled images and labels will be moved to folder B and D respectively. 
+# The moved images will be in PNG format, and the labels will be in TXT format.
+
+
 # --- Configure paths ---
-folder_A = str(Path(r"F:\dataset\Night4\images"))  # PNG source folder
-folder_B = str(Path(r"F:\dataset\Night4\images\val"))  # PNG destination folder
-folder_C = str(Path(r"F:\dataset\Night4\labels\train"))  # TXT source folder
-folder_D = str(Path(r"F:\dataset\Night4\labels\val"))  # TXT destination folder
+folder_A = str(Path(r"F:\dataset\Night2.0.1\images\train"))  # PNG source folder
+folder_B = str(Path(r"F:\dataset\Night2.0.1\images\val"))  # PNG destination folder
+folder_C = str(Path(r"F:\dataset\Night2.0.1\labels\train"))  # TXT source folder
+folder_D = str(Path(r"F:\dataset\Night2.0.1\labels\val"))  # TXT destination folder
 
 # --- Step 1: Get list of PNG files in folder A ---
 png_files = [f for f in os.listdir(folder_A) if f.endswith(".png")]

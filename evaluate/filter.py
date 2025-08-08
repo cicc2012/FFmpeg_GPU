@@ -2,11 +2,15 @@ import os
 import shutil
 from pathlib import Path
 
+# This script filters YOLO label files based on the presence of wrapper class (A:front view) and moves the corresponding images.
+# The images should be in PNG or JPG format.
+# The images and labels should match in name (except for extension).
+
 # Define source and destination paths
-labels_src = str(Path(r'F:\dataset\Night2.0.0\labels_all\val'))
-images_src = str(Path(r'F:\dataset\Night2.0.0\images\val'))
-labels_dst = str(Path(r'F:\dataset\Night2.0.0\labels_signal_front\val'))
-images_dst = str(Path(r'F:\dataset\Night2.0.0\images_front\val'))
+labels_src = str(Path(r'F:\dataset\Night2.0.1\labels\train'))
+images_src = str(Path(r'F:\dataset\Night2.0.1\images\train'))
+labels_dst = str(Path(r'F:\dataset\Night2.0.1\labels_signal_front\train'))
+images_dst = str(Path(r'F:\dataset\Night2.0.1\images_front\train'))
 
 # Create destination folders
 os.makedirs(labels_dst, exist_ok=True)

@@ -28,37 +28,37 @@ subdir = "front" if view_code == 0 else "side" if view_code == 1 else "all"
 if stage_mode == 1:
     # for stage 1
     CLASS_NAMES = ['Traffic Light Group','Traffic Light Group Side'] 
-    YOLO_IMG_DIR = str(Path(r"F:\dataset\Night2.0.0\images\val"))
-    YOLO_LABEL_DIR = str(Path(r"F:\dataset\Night2.0.0\labels\val"))
+    YOLO_IMG_DIR = str(Path(r"F:\dataset\Night2.1.0\images\val"))
+    YOLO_LABEL_DIR = str(Path(r"F:\dataset\Night2.1.0\labels\val"))
     # YOLO_PRED_DIR = str(Path(r"F:\dataset\Night2.0.0\test\front\crop\labels_wbf"))
-    YOLO_PRED_DIR = os.path.join(r"F:\dataset\Night2.0.0\test", subdir, "crop", "labels_wbf")
+    YOLO_PRED_DIR = os.path.join(r"F:\dataset\Night2.1.0\test", subdir, "crop", "labels_wbf")
     IMG_EXT = ".png"
     IMG_SIZE_CACHE = {}
     # OUTPUT_DIR =  str(Path(r"F:\dataset\Night2.0.0\test\all\crop\evaluation\coco_eval"))
-    OUTPUT_DIR =  os.path.join(r"F:\dataset\Night2.0.0\test", subdir, "crop", "evaluation", "coco_eval")
+    OUTPUT_DIR =  os.path.join(r"F:\dataset\Night2.1.0\test", subdir, "crop", "evaluation", "coco_eval")
 elif stage_mode == 2:
     # for stage 2
     # need to test stage 2 only: separated from stage 1
     CLASS_NAMES = ['Traffic Light Bulb Red','Traffic Light Bulb Yellow','Traffic Light Bulb Green','Traffic Light Bulb Null']
-    YOLO_IMG_DIR = str(Path(r"F:\dataset\Night2.0.0\crop\images\val"))
-    YOLO_LABEL_DIR = str(Path(r"F:\dataset\Night2.0.0\crop\labels\val"))
-    # YOLO_PRED_DIR = str(Path(r"F:\dataset\Night2.0.0\test\all\predict\labels_wbf"))
-    YOLO_PRED_DIR = os.path.join(r"F:\dataset\Night2.0.0\test", subdir, "predict", "labels_wbf")
+    YOLO_IMG_DIR = str(Path(r"F:\dataset\Night2.1.0\crop\images\val"))
+    YOLO_LABEL_DIR = str(Path(r"F:\dataset\Night2.1.0\crop\labels\val"))
+    # YOLO_PRED_DIR = str(Path(r"F:\dataset\Night2.1.0\test\all\predict\labels_wbf"))
+    YOLO_PRED_DIR = os.path.join(r"F:\dataset\Night2.1.0\test", subdir, "predict", "labels_wbf")
     IMG_EXT = ".png"
     IMG_SIZE_CACHE = {}
-    # OUTPUT_DIR =  str(Path(r"F:\dataset\Night2.0.0\test\all\predict\evaluation\coco_eval"))
-    OUTPUT_DIR =  os.path.join(r"F:\dataset\Night2.0.0\test", subdir, "predict", "evaluation", "coco_eval")
+    # OUTPUT_DIR =  str(Path(r"F:\dataset\Night2.0.1\test\all\predict\evaluation\coco_eval"))
+    OUTPUT_DIR =  os.path.join(r"F:\dataset\Night2.1.0\test", subdir, "predict", "evaluation", "coco_eval")
 elif stage_mode == 12:
     # for overall process
     CLASS_NAMES = ['Traffic Light Bulb Red','Traffic Light Bulb Yellow','Traffic Light Bulb Green','Traffic Light Bulb Null']
-    YOLO_IMG_DIR = str(Path(r"F:\dataset\Night2.0.0\images\val"))
-    YOLO_LABEL_DIR = str(Path(r"F:\dataset\Night2.0.0\labels_signal_front\val")) if view_code == 0 else str(Path(r"F:\dataset\Night2.0.0\labels_signal\val"))
+    YOLO_IMG_DIR = str(Path(r"F:\dataset\Night2.1.0\images\val"))
+    YOLO_LABEL_DIR = str(Path(r"F:\dataset\Night2.1.0\labels_signal_front\val")) if view_code == 0 else str(Path(r"F:\dataset\Night2.1.0\labels_signal\val"))
     # YOLO_PRED_DIR = str(Path(r"F:\dataset\Night2.0.0\test\all\predict\overall\labels"))
-    YOLO_PRED_DIR = os.path.join(r"F:\dataset\Night2.0.0\test", subdir, "predict", "overall", "labels")
+    YOLO_PRED_DIR = os.path.join(r"F:\dataset\Night2.1.0\test", subdir, "predict", "overall", "labels")
     IMG_EXT = ".png"
     IMG_SIZE_CACHE = {}
     # OUTPUT_DIR =  str(Path(r"F:\dataset\Night2.0.0\test\all\predict\overall\evaluation\coco_eval"))
-    OUTPUT_DIR =  os.path.join(r"F:\dataset\Night2.0.0\test", subdir, "predict", "overall", "evaluation", "coco_eval")
+    OUTPUT_DIR =  os.path.join(r"F:\dataset\Night2.1.0\test", subdir, "predict", "overall", "evaluation", "coco_eval")
 else:
     raise ValueError("Invalid stage_mode. Use 1 for stage 1, 2 for stage 2, or 12 for both stages.")
 # -----------------------------

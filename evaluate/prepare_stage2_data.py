@@ -3,6 +3,9 @@ import cv2
 import shutil
 from pathlib import Path
 
+# This script crops group area images, as preparation to training of models in stage 2.
+# The new labels' coordinates are normalized to fit into the cropped images.
+
 def yolo_to_xyxy(box, img_w, img_h):
     xc, yc, w, h = box
     x1 = int((xc - w / 2) * img_w)
@@ -81,11 +84,11 @@ def prepare_stage2_dataset(images_dir, labels_dir, output_images, output_labels,
 class_map = {1: 0, 2: 1, 3: 2, 4: 3}
 
 # Example usage
-train_or_val=r"\val"
+train_or_val=r"\train"
 prepare_stage2_dataset(
-    images_dir=Path(r"F:\dataset\Night2.0.0\images" + train_or_val),
-    labels_dir=Path(r"F:\dataset\Night2.0.0\labels_all" + train_or_val),
-    output_images=Path(r"F:\dataset\Night2.0.0\crop\images" + train_or_val),
-    output_labels=Path(r"F:\dataset\Night2.0.0\crop\labels" + train_or_val),
+    images_dir=Path(r"F:\dataset\Night2.0.1\images" + train_or_val),
+    labels_dir=Path(r"F:\dataset\Night2.0.1\labels" + train_or_val),
+    output_images=Path(r"F:\dataset\Night2.0.1\crop\images" + train_or_val),
+    output_labels=Path(r"F:\dataset\Night2.0.1\crop\labels" + train_or_val),
     class_map=class_map
 )

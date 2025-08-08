@@ -26,43 +26,43 @@ conf_threshold2 = 0.001  # Confidence threshold for stage 2 predictions
 iou_threshold = 0.5  # IoU threshold for NMS
 
 
-stage1_model_path=str(Path(r"F:\Test\Yolo\runs\detect\train14\weights\best.pt"))
+stage1_model_path=str(Path(r"F:\Test\Yolo\runs\detect\train16\weights\best.pt"))
 # 0: 'Traffic Light Group'
 # 1: 'Traffic Light Group Side'
-stage2_model_path=str(Path(r"F:\Test\Yolo\runs\detect\train15\weights\best.pt"))
+stage2_model_path=str(Path(r"F:\Test\Yolo\runs\detect\train17\weights\best.pt"))
 # 0: 'Traffic Light Bulb Red'
 # 1: 'Traffic Light Bulb Yellow'
 # 2: 'Traffic Light Bulb Green'
 # 3: 'Traffic Light Bulb Null'
 
 if view_code == 0:  # Front view
-    test_signal_gt_path=str(Path(r"F:\dataset\Night2.0.0\labels_signal_front\val"))
+    test_signal_gt_path=str(Path(r"F:\dataset\Night2.1.0\labels_signal_front\val"))
     # 0: 'Traffic Light Bulb Red'
     # 1: 'Traffic Light Bulb Yellow'
     # 2: 'Traffic Light Bulb Green'
     # 3: 'Traffic Light Bulb Null'
-    stage1_input_path=str(Path(r"F:\dataset\Night2.0.0\images_front\val"))
-    stage1_output_path=str(Path(r"F:\dataset\Night2.0.0\test\front\crop"))
+    stage1_input_path=str(Path(r"F:\dataset\Night2.1.0\images_front\val"))
+    stage1_output_path=str(Path(r"F:\dataset\Night2.1.0\test\front\crop"))
     stage2_input_path=stage1_output_path #if pipeline_mode else str(Path(r"F:\dataset\Night2.0.0\crop\images\val"))
-    stage2_output_path=str(Path(r"F:\dataset\Night2.0.0\test\front\predict"))
+    stage2_output_path=str(Path(r"F:\dataset\Night2.1.0\test\front\predict"))
 
-    final_output_path=str(Path(r"F:\dataset\Night2.0.0\test\front\predict\overall"))
-    final_eval_path=str(Path(r"F:\dataset\Night2.0.0\test\front\evaluation"))
-    log_path=str(Path(r"F:\dataset\Night2.0.0\test\front\evaluation\eval_log.csv"))
+    final_output_path=str(Path(r"F:\dataset\Night2.1.0\test\front\predict\overall"))
+    final_eval_path=str(Path(r"F:\dataset\Night2.1.0\test\front\evaluation"))
+    log_path=str(Path(r"F:\dataset\Night2.1.0\test\front\evaluation\eval_log.csv"))
 else:
-    test_signal_gt_path=str(Path(r"F:\dataset\Night2.0.0\labels_signal\val"))
+    test_signal_gt_path=str(Path(r"F:\dataset\Night2.1.0\labels_signal\val"))
     # 0: 'Traffic Light Bulb Red'
     # 1: 'Traffic Light Bulb Yellow'
     # 2: 'Traffic Light Bulb Green'
     # 3: 'Traffic Light Bulb Null'
-    stage1_input_path=str(Path(r"F:\dataset\Night2.0.0\images\val"))
-    stage1_output_path=str(Path(r"F:\dataset\Night2.0.0\test\all\crop"))
-    stage2_input_path=stage1_output_path if pipeline_mode else str(Path(r"F:\dataset\Night2.0.0\crop\images\val"))
-    stage2_output_path=str(Path(r"F:\dataset\Night2.0.0\test\all\predict"))
+    stage1_input_path=str(Path(r"F:\dataset\Night2.1.0\images\val"))
+    stage1_output_path=str(Path(r"F:\dataset\Night2.1.0\test\all\crop"))
+    stage2_input_path=stage1_output_path if pipeline_mode else str(Path(r"F:\dataset\Night2.1.0\crop\images\val"))
+    stage2_output_path=str(Path(r"F:\dataset\Night2.1.0\test\all\predict"))
 
-    final_output_path=str(Path(r"F:\dataset\Night2.0.0\test\all\predict\overall"))
-    final_eval_path=str(Path(r"F:\dataset\Night2.0.0\test\all\evaluation"))
-    log_path=str(Path(r"F:\dataset\Night2.0.0\test\all\evaluation\eval_log.csv"))
+    final_output_path=str(Path(r"F:\dataset\Night2.1.0\test\all\predict\overall"))
+    final_eval_path=str(Path(r"F:\dataset\Night2.1.0\test\all\evaluation"))
+    log_path=str(Path(r"F:\dataset\Night2.1.0\test\all\evaluation\eval_log.csv"))
 
 use_wbf = True  # Whether to use WBF for each stage
 
